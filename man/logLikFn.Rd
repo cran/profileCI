@@ -3,22 +3,32 @@
 \name{logLikFn}
 \alias{logLikFn}
 \alias{logLikFn.glm}
+\alias{logLikFn.nls}
 \title{Calculate Log-Likelihood}
 \usage{
 logLikFn(object, pars, ...)
 
 \method{logLikFn}{glm}(object, pars, ...)
+
+\method{logLikFn}{nls}(object, pars, ...)
 }
 \arguments{
 \item{object}{A fitted model object.}
 
 \item{pars}{A numeric vector of parameters of the model.}
 
-\item{...}{Further arguments.}
+\item{...}{Further arguments. None are used in the \code{logLikFn.glm} and
+\code{logLikFn.nls} generics.}
 }
 \value{
 A numeric scalar. The value of the log-likelihood function for the
 fitted model object \code{object} for parameter values \code{pars}.
+
+The \code{logLikFn.glm} generic is specifically for the unweighted Poisson
+log-linear GLM case.
+
+The \code{logLikFn.nls} generic is more general and should work for all
+model objects returned by \code{\link[stats:nls]{stats::nls}}.
 }
 \description{
 This is a generic function for calculating a log-likelihood for an object
@@ -28,4 +38,7 @@ at input parameter values.
 This generic function has been created to enable a function that
 calculates the log-likelihood for a parametric model at a given set of
 parameter values in \code{pars} to be available to the function \code{\link{profileCI}}.
+}
+\seealso{
+\code{\link{profileCI}}, \code{\link[stats:glm]{stats::glm}}, \code{\link[stats:nls]{stats::nls}}.
 }

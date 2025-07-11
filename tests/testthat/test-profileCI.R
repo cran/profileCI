@@ -54,4 +54,3 @@ prof0 <- profileCI(glm.0, loglik = poisson_loglik_0, profile = TRUE,
 test_that("Profile-based intervals for intercept only Poisson GLM", {
   expect_equal(conf0, prof0, tolerance = 1e-5, ignore_attr = TRUE)
 })
-

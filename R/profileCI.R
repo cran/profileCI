@@ -7,6 +7,12 @@
 #'
 #' @param object A fitted model object. This object must have a `coef` S3
 #'   method. If `faster = TRUE` then it must also have a `vcov` S3 method.
+#'   If necessary, these may be created using [`.S3method()`]. For example, if
+#'   `object` is a list inheriting from class `"foo"`, with coefficients
+#'   in `object$coefficients` and variance-covariance matrix in `object$vcov`,
+#'   then use `.S3method("coef", "foo", function(x) x$coefficients)` and
+#'   `.S3method("vcov", "foo", function(x) x$vcov)`.
+#'
 #' @param loglik A named function that returns the log-likelihood based on
 #'   input parameter values and data. The first argument must be the vector of
 #'   model parameters. If the likelihood is zero for any observation in the
@@ -48,8 +54,23 @@
 #'
 #'   * If `epsilon[i] = 0` then linear interpolation is used, which will be
 #'     faster still.
+#' @param flat A positive numeric scalar used to avoid continuing a search
+#'   for a confidence limits in cases where the profile log-likelihood becomes
+#'   flat. If a reduction in profile log-likelihood is less than
+#'   `flat * mult / 100` then the search is stopped. The value of the returned
+#'   confidence limit is `Inf` for an upper limit and `-Inf` for a lower limit.
+#' @param lb,ub Optional numeric vectors of length `length(parm)`. If supplied,
+#'   `lb[i]` and/or  `ub[i]` place respective lower and upper bounds on the
+#'   interval over which profiling takes place for parameter `parm[i]`.
+#'   If a bound is reached before a confidence limit is determined or before
+#'   the profile log-likelihood is determined to have become flat, then the
+#'   relevant limit is returned as `NA`. Elementwise, `lb` must be smaller
+#'   than, and `ub` larger than, `coef(object)`.
 #' @param optim_args A list of further arguments (other than `par` and `fn`) to
-#'   pass to `[stats::optim]`.
+#'   pass to [`stats::optim`]. For example,
+#'   `optim_args = list(method = "BFGS", control = list(trace = 1))`
+#'   changes the method used from `"Nelder-Mead"` to `"BFGS"` and sets `trace`
+#'   to provide the lowest level of tracing information.
 #' @details The default, `epsilon = -1`, should work well enough in most
 #'   circumstances, but to achieve a specific accuracy set `epsilon` to be
 #'   a small positive value, for example, `epsilon = 1e-4`.
@@ -59,6 +80,10 @@
 #'   `profileCI` is plotted, using [`plot.profileCI`], then we will not obtain
 #'   a smooth plot of a profile log-likelihood. Setting `faster = FALSE` and
 #'   reducing `mult`, perhaps to `8` or `16` should produce a smoother plot.
+#'
+#'   The arguments `flat1, lb` and `ub` are provided to prevent a call to
+#'   `profileCI` hanging in a search for a confidence limit that will never be
+#'   found.
 #' @return An object of class `c("profileCI", "matrix", "array")`. A numeric
 #'   matrix with 2 columns giving the lower and upper confidence limits for
 #'   each parameter. These columns are labelled as `(1-level)/2` and
@@ -87,8 +112,8 @@
 #' confint(glm.D93)
 #' confint.default(glm.D93)
 #'
-#' # A logLikFn.glm S3 method is provided in profileCI so we do not need to
-#' # supply loglik explicitly
+#' # A Poisson log-linear GLM logLikFn.glm S3 method is provided in profileCI
+#' # so we do not need to supply loglik explicitly
 #' prof <- profileCI(glm.D93)
 #' prof
 #'
@@ -112,10 +137,21 @@
 #' }
 #' prof <- profileCI(glm.D93, loglik = poisson_loglik_2, glm_object = glm.D93)
 #' prof
+#'
+#' ## Nonlinear least squares, from example(nls)
+#' DNase1 <- subset(DNase, Run == 1)
+#' fm1DNase1 <- nls(density ~ SSlogis(log(conc), Asym, xmid, scal), DNase1)
+#' confint(fm1DNase1)
+#' # profileCI() gives slightly different results because confint.nls() is
+#' # not based on profiling the log-likelihood but rather changes in the RSS
+#' prof <- profileCI(fm1DNase1)
+#' prof
 #' @export
 profileCI <- function(object, loglik, ..., parm = "all", level = 0.95,
                       profile = TRUE, mult = 32, faster = TRUE, epsilon = -1,
-                      optim_args = list()) {
+                      flat = 1e-6, lb, ub, optim_args = list()) {
+  # Force flat to be positive
+  flat <- abs(flat)
   # If loglik is missing then check whether object has a logLikFn method
   # If it does then use it, otherwise throw an error
   if (missing(loglik)) {
@@ -124,8 +160,8 @@ profileCI <- function(object, loglik, ..., parm = "all", level = 0.95,
     }
     has_logLikFnMethod <- sapply(class(object), FUN = find_logLikFn)
     if (any(has_logLikFnMethod)) {
-      loglik <- function(pars) {
-        return(logLikFn(object, pars = pars))
+      loglik <- function(pars, ...) {
+        return(logLikFn(object, pars = pars, ...))
       }
     } else {
       stop("If \"object\" has no logLikFn method then loglik must be supplied")
@@ -152,6 +188,28 @@ profileCI <- function(object, loglik, ..., parm = "all", level = 0.95,
     parm <- parm_names
   } else if (is.numeric(parm)) {
     parm <- parm_names[parm]
+  }
+  # If lb and/or ub are not supplied then set values that do not constrain
+  # Otherwise, check that lb and ub are sensible
+  if (missing(lb)) {
+    lb <- rep_len(-Inf, length(parm))
+  } else {
+    if (length(lb) != length(parm)) {
+      stop("\"lb\" must have the same length as \"parm\"")
+    }
+    if (any(lb >= coef(object)[parm])) {
+      stop("\"lb\" must be smaller than \"coef(object)\" elementwise")
+    }
+  }
+  if (missing(ub)) {
+    ub <- rep_len(Inf, length(parm))
+  } else {
+    if (length(ub) != length(parm)) {
+      stop("\"ub\" must have the same length as \"parm\"")
+    }
+    if (any(ub <= coef(object)[parm])) {
+      stop("\"ub\" must be larger than \"coef(object)\" elementwise")
+    }
   }
   # Logical vector indicating which parameters to include
   which_parm <- is.element(parm_names, parm)
@@ -223,7 +281,10 @@ profileCI <- function(object, loglik, ..., parm = "all", level = 0.95,
                                        which_name = parm[i],
                                        level = level, mle = coef(object),
                                        ci_sym_mat = ci_sym_mat,
-                                       inc = inc[i], epsilon = epsilon[i], ...)
+                                       inc = inc[i], epsilon = epsilon[i],
+                                       optim_args = optim_args, mult = mult,
+                                       flat = flat, lb = lb[i], ub = ub[i],
+                                       ...)
         if (!is.null(conf_list$optim_error)) {
           mult <- mult / 2
         } else {
@@ -239,7 +300,9 @@ profileCI <- function(object, loglik, ..., parm = "all", level = 0.95,
                                 negated_loglik_fn = negated_loglik_fn,
                                 which = parm_numbers[i], level = level,
                                 mle = coef(object), inc = inc[i],
-                                epsilon = epsilon[i], ...)
+                                epsilon = epsilon[i], optim_args = optim_args,
+                                mult = mult, flat = flat, lb = lb[i],
+                                ub = ub[i], ...)
         if (!is.null(conf_list$optim_error)) {
           mult <- mult / 2
         } else {

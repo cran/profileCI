@@ -1,6 +1,8 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
+# profileCI
+
 [![Appveyor Build
 status](https://ci.appveyor.com/api/projects/status/99jojhgk9t4agdmv/branch/main?svg=true)](https://ci.appveyor.com/project/paulnorthrop/profileCI/branch/main)
 [![R-CMD-check](https://github.com/paulnorthrop/profileCI/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/paulnorthrop/profileCI/actions/workflows/R-CMD-check.yaml)
@@ -24,8 +26,10 @@ confidence intervals for the parameters of a Generalised Linear Model
 Speed of computation can be improved by starting the profiling from
 limits based on large sample normal theory. The accuracy of the limits
 can be set by the user. A plot method visualises the log-likelihood and
-confidence interval. Only convex log-likelihoods are supported, that is,
-disjoint confidence intervals will not be found.
+confidence interval. Cases where the profile log-likelihood flattens
+above the value at which a confidence limit is defined can be handled,
+leading to a limit at plus or minus infinity. Disjoint confidence
+intervals will not be found.
 
 ## An example
 
@@ -85,9 +89,9 @@ library(profileCI)
 prof <- profileCI(glm.D93, loglik = poisson_loglik)
 prof
 #>                   2.5%       97.5%
-#> (Intercept)  2.6958271  3.36656670
-#> outcome2    -0.8576884 -0.06255488
-#> outcome3    -0.6753594  0.08244084
+#> (Intercept)  2.6958271  3.36656379
+#> outcome2    -0.8576884 -0.06255514
+#> outcome3    -0.6753594  0.08244109
 #> treatment2  -0.3932489  0.39324886
 #> treatment3  -0.3932489  0.39324886
 ```
@@ -127,4 +131,10 @@ To get the current released version from CRAN:
 
 ``` r
 install.packages("profileCI")
+```
+
+To install the development version from GitHub:
+
+``` r
+remotes::install_github("paulnorthrop/profileCI")
 ```

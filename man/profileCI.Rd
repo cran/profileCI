@@ -14,12 +14,20 @@ profileCI(
   mult = 32,
   faster = TRUE,
   epsilon = -1,
+  flat = 1e-06,
+  lb,
+  ub,
   optim_args = list()
 )
 }
 \arguments{
 \item{object}{A fitted model object. This object must have a \code{coef} S3
-method. If \code{faster = TRUE} then it must also have a \code{vcov} S3 method.}
+method. If \code{faster = TRUE} then it must also have a \code{vcov} S3 method.
+If necessary, these may be created using \code{\link[=.S3method]{.S3method()}}. For example, if
+\code{object} is a list inheriting from class \code{"foo"}, with coefficients
+in \code{object$coefficients} and variance-covariance matrix in \code{object$vcov},
+then use \code{.S3method("coef", "foo", function(x) x$coefficients)} and
+\code{.S3method("vcov", "foo", function(x) x$vcov)}.}
 
 \item{loglik}{A named function that returns the log-likelihood based on
 input parameter values and data. The first argument must be the vector of
@@ -69,8 +77,25 @@ be faster.
 faster still.
 }}
 
+\item{flat}{A positive numeric scalar used to avoid continuing a search
+for a confidence limits in cases where the profile log-likelihood becomes
+flat. If a reduction in profile log-likelihood is less than
+\code{flat * mult / 100} then the search is stopped. The value of the returned
+confidence limit is \code{Inf} for an upper limit and \code{-Inf} for a lower limit.}
+
+\item{lb, ub}{Optional numeric vectors of length \code{length(parm)}. If supplied,
+\code{lb[i]} and/or  \code{ub[i]} place respective lower and upper bounds on the
+interval over which profiling takes place for parameter \code{parm[i]}.
+If a bound is reached before a confidence limit is determined or before
+the profile log-likelihood is determined to have become flat, then the
+relevant limit is returned as \code{NA}. Elementwise, \code{lb} must be smaller
+than, and \code{ub} larger than, \code{coef(object)}.}
+
 \item{optim_args}{A list of further arguments (other than \code{par} and \code{fn}) to
-pass to \verb{[stats::optim]}.}
+pass to \code{\link[stats:optim]{stats::optim}}. For example,
+\code{optim_args = list(method = "BFGS", control = list(trace = 1))}
+changes the method used from \code{"Nelder-Mead"} to \code{"BFGS"} and sets \code{trace}
+to provide the lowest level of tracing information.}
 }
 \value{
 An object of class \code{c("profileCI", "matrix", "array")}. A numeric
@@ -109,6 +134,10 @@ confidence intervals fairly quickly. If the object returned from
 \code{profileCI} is plotted, using \code{\link{plot.profileCI}}, then we will not obtain
 a smooth plot of a profile log-likelihood. Setting \code{faster = FALSE} and
 reducing \code{mult}, perhaps to \code{8} or \code{16} should produce a smoother plot.
+
+The arguments \verb{flat1, lb} and \code{ub} are provided to prevent a call to
+\code{profileCI} hanging in a search for a confidence limit that will never be
+found.
 }
 \examples{
 ## From example(glm)
@@ -119,8 +148,8 @@ glm.D93 <- glm(counts ~ outcome + treatment, family = poisson())
 confint(glm.D93)
 confint.default(glm.D93)
 
-# A logLikFn.glm S3 method is provided in profileCI so we do not need to
-# supply loglik explicitly
+# A Poisson log-linear GLM logLikFn.glm S3 method is provided in profileCI
+# so we do not need to supply loglik explicitly
 prof <- profileCI(glm.D93)
 prof
 
@@ -143,6 +172,15 @@ poisson_loglik_2 <- function(pars, glm_object) {
   return(sum(loglik))
 }
 prof <- profileCI(glm.D93, loglik = poisson_loglik_2, glm_object = glm.D93)
+prof
+
+## Nonlinear least squares, from example(nls)
+DNase1 <- subset(DNase, Run == 1)
+fm1DNase1 <- nls(density ~ SSlogis(log(conc), Asym, xmid, scal), DNase1)
+confint(fm1DNase1)
+# profileCI() gives slightly different results because confint.nls() is
+# not based on profiling the log-likelihood but rather changes in the RSS
+prof <- profileCI(fm1DNase1)
 prof
 }
 \seealso{
